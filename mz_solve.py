@@ -74,7 +74,9 @@ def GetString(addr):
 def check_with_va_args(current_rip, start_ea):
     local_vars = {
         "isFmt": True,
-        "cntFmt": 0
+        "cntFmt": 0,
+        "currentRip": current_rip,
+        "cntConst": 0
     }
     while current_rip != start_ea:
         if idc.print_insn_mnem(current_rip) in inst["1"] and idc.print_operand(current_rip, 0) == pvar[0]:
@@ -99,8 +101,34 @@ def check_with_va_args(current_rip, start_ea):
             else:
                 return 0
         current_rip = idc.prev_head(current_rip)
-    # for var_idx in range(local_vars)
     print(local_vars["cntFmt"])
+    for var_idx in range(local_vars["cntFmt"]):
+        local_vars_2 = {
+            "final_var": '',
+            "current_var": pvar[var_idx + 1]
+        }
+        current_rip = local_vars["currentRip"]
+        if var_idx + 1 > 3 and arch in ["arm", "mips"]:
+            while current_rip != start_ea:
+                if idc.print_insn_mnem(current_rip) in inst["2"] and idc.op_hex(current_rip, 1) and idc.print_operand(
+                        current_rip, 1) == local_vars_2["current_var"]:
+                    local_vars_2["final_var"] = idc.print_operand(current_rip, 0)
+                    break
+                current_rip = idc.prev_head(current_rip)
+        else:
+            local_vars_2["final_var"] = local_vars_2["current_var"]
+        while current_rip != start_ea:
+            if idc.print_insn_mnem(current_rip) in inst["1"] and idc.print_operand(current_rip, 0) == local_vars_2["final_var"]:
+                asm = idc.GetDisasm(current_rip)
+                if ("\"" in asm) and (";" in asm or "#" in asm):
+                    local_vars["cntConst"] += 1
+                else:
+                    return 0
+            current_rip = idc.prev_head(current_rip)
+    if local_vars["cntConst"] == local_vars["cntFmt"]:
+        return 1
+    else:
+        return 0
 
 
 def check_vuln(ea,check_point):
