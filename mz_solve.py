@@ -60,16 +60,47 @@ def check(current_rip,start_ea,target_register_idx, check_const):
     return 0
 
 
+def GetString(addr):
+    string = ''
+    while True:
+        curByte = idaapi.get_byte(addr)
+        if curByte == 0x00:
+            break
+        addr += 1
+        string += chr(curByte)
+    return string
+
+
 def check_with_va_args(current_rip, start_ea):
+    local_vars = {
+        "isFmt": True,
+        "cntFmt": 0
+    }
     while current_rip != start_ea:
         if idc.print_insn_mnem(current_rip) in inst["1"] and idc.print_operand(current_rip, 0) == pvar[0]:
             asm = idc.GetDisasm(current_rip)
             if ("\"" in asm) and (";" in asm or "#" in asm):
-                print(asm)
+                idc.op_hex(current_rip, 1)
+                fmt_str_offset = int(idc.print_operand(current_rip, 1), 16) + idaapi.get_imagebase()
+                fmt_str = GetString(fmt_str_offset)
+                if fmt_str.find("%") == -1:
+                    local_vars["isFmt"] = False
+                    return 1
+                print(fmt_str)
+                for i in range(1, 7):
+                    try:
+                        testor = tuple([0]*i)
+                        s = fmt_str % testor
+                        local_vars["cntFmt"] = i
+                        break
+                    except Exception as e:
+                        continue
                 break
             else:
                 return 0
         current_rip = idc.prev_head(current_rip)
+    # for var_idx in range(local_vars)
+    print(local_vars["cntFmt"])
 
 
 def check_vuln(ea,check_point):
