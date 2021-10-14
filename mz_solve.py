@@ -90,7 +90,7 @@ def check_with_va_args(current_rip, start_ea):
                     if idc.print_insn_mnem(current_rip) == "li":
                         current_analysis["fmt_str_offset"] = idc.get_operand_value(current_rip, 1)
                     else:
-                        current_analysis["fmt_str_offset"] = int(idc.print_operand(current_rip, 1), 16) + idaapi.get_imagebase()
+                        current_analysis["fmt_str_offset"] = idc.get_operand_value(current_rip, 1) + idaapi.get_imagebase()
                     fmt_str = GetString(current_analysis["fmt_str_offset"])
                     if fmt_str.find("%") == -1:
                         local_vars["isFmt"] = False
