@@ -18,7 +18,7 @@ elif "$a0" in register:
     arch = "mips"
     pvar = ["$a0", "$a1", "$a2", "$a3", "0x10($sp)"]    #MIPS
     inst = {
-        "1": ["move", "addiu", "lw"],
+        "1": ["move", "addiu", "lw", "li"],
         "2": ["sw"]
     }
 elif "r15" in register:
@@ -78,56 +78,65 @@ def check_with_va_args(current_rip, start_ea):
         "currentRip": current_rip,
         "cntConst": 0
     }
-    while current_rip != start_ea:
-        if idc.print_insn_mnem(current_rip) in inst["1"] and idc.print_operand(current_rip, 0) == pvar[0]:
-            asm = idc.GetDisasm(current_rip)
-            if ("\"" in asm) and (";" in asm or "#" in asm):
-                idc.op_hex(current_rip, 1)
-                fmt_str_offset = int(idc.print_operand(current_rip, 1), 16) + idaapi.get_imagebase()
-                fmt_str = GetString(fmt_str_offset)
-                if fmt_str.find("%") == -1:
-                    local_vars["isFmt"] = False
-                    return 1
-                print(fmt_str)
-                for i in range(1, 7):
-                    try:
-                        testor = tuple([0]*i)
-                        s = fmt_str % testor
-                        local_vars["cntFmt"] = i
-                        break
-                    except Exception as e:
-                        continue
-                break
-            else:
-                return 0
-        current_rip = idc.prev_head(current_rip)
-    print(local_vars["cntFmt"])
-    for var_idx in range(local_vars["cntFmt"]):
-        local_vars_2 = {
-            "final_var": '',
-            "current_var": pvar[var_idx + 1]
-        }
-        current_rip = local_vars["currentRip"]
-        if var_idx + 1 > 3 and arch in ["arm", "mips"]:
-            while current_rip != start_ea:
-                if idc.print_insn_mnem(current_rip) in inst["2"] and idc.op_hex(current_rip, 1) and idc.print_operand(
-                        current_rip, 1) == local_vars_2["current_var"]:
-                    local_vars_2["final_var"] = idc.print_operand(current_rip, 0)
-                    break
-                current_rip = idc.prev_head(current_rip)
-        else:
-            local_vars_2["final_var"] = local_vars_2["current_var"]
+    if arch == "mips":
         while current_rip != start_ea:
-            if idc.print_insn_mnem(current_rip) in inst["1"] and idc.print_operand(current_rip, 0) == local_vars_2["final_var"]:
+            print(current_rip, idc.print_insn_mnem(current_rip))
+            if idc.print_insn_mnem(current_rip) in inst["1"] and idc.print_operand(current_rip, 0) == pvar[0]:
                 asm = idc.GetDisasm(current_rip)
                 if ("\"" in asm) and (";" in asm or "#" in asm):
-                    local_vars["cntConst"] += 1
+                    current_analysis = {
+                        "fmt_str_offset": 0
+                    }
+                    if idc.print_insn_mnem(current_rip) == "li":
+                        current_analysis["fmt_str_offset"] = idc.get_operand_value(current_rip, 1)
+                    else:
+                        current_analysis["fmt_str_offset"] = int(idc.print_operand(current_rip, 1), 16) + idaapi.get_imagebase()
+                    fmt_str = GetString(current_analysis["fmt_str_offset"])
+                    if fmt_str.find("%") == -1:
+                        local_vars["isFmt"] = False
+                        return 1
+                    print(fmt_str)
+                    for i in range(1, 7):
+                        try:
+                            testor = tuple([0]*i)
+                            s = fmt_str % testor
+                            local_vars["cntFmt"] = i
+                            break
+                        except Exception as e:
+                            continue
+                    break
                 else:
                     return 0
             current_rip = idc.prev_head(current_rip)
-    if local_vars["cntConst"] == local_vars["cntFmt"]:
-        return 1
-    else:
+        print(local_vars["cntFmt"])
+        for var_idx in range(local_vars["cntFmt"]):
+            local_vars_2 = {
+                "final_var": '',
+                "current_var": pvar[var_idx + 1]
+            }
+            current_rip = local_vars["currentRip"]
+            if var_idx + 1 > 3:
+                while current_rip != start_ea:
+                    if idc.print_insn_mnem(current_rip) in inst["2"] and idc.op_hex(current_rip, 1) and idc.print_operand(
+                            current_rip, 1) == local_vars_2["current_var"]:
+                        local_vars_2["final_var"] = idc.print_operand(current_rip, 0)
+                        break
+                    current_rip = idc.prev_head(current_rip)
+            else:
+                local_vars_2["final_var"] = local_vars_2["current_var"]
+            while current_rip != start_ea:
+                if idc.print_insn_mnem(current_rip) in inst["1"] and idc.print_operand(current_rip, 0) == local_vars_2["final_var"]:
+                    asm = idc.GetDisasm(current_rip)
+                    if ("\"" in asm) and (";" in asm or "#" in asm):
+                        local_vars["cntConst"] += 1
+                    else:
+                        return 0
+                current_rip = idc.prev_head(current_rip)
+        if local_vars["cntConst"] == local_vars["cntFmt"]:
+            return 1
+        else:
+            return 0
+    elif arch == "arm":
         return 0
 
 
