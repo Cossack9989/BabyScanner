@@ -1,10 +1,10 @@
 import idc
 import json
 import idaapi
-import idautils
+from idautils import *
 
 idc.auto_wait()
-output = open("D:\\Project\\PythonProject\\datacon2021\\res.txt", "a+")
+output = open("D:\\Project\\PythonProject\\datacon2021\\res1014_0.txt", "a+")
 register = idaapi.ph_get_regnames()
 
 if "R0" in register:
@@ -18,8 +18,9 @@ elif "$a0" in register:
     arch = "mips"
     pvar = ["$a0", "$a1", "$a2", "$a3", "0x10($sp)"]    #MIPS
     inst = {
-        "1": ["move", "addiu", "lw", "li"],
-        "2": ["sw"]
+        "1": ["move", "addiu", "lw"],
+        "2": ["sw"],
+        "call": ["jal", "jalr"]
     }
 elif "r15" in register:
     arch = "amd64"
@@ -31,33 +32,69 @@ else:
 
 
 def check(current_rip,start_ea,target_register_idx, check_const):
-    local_vars = {
-        "final_var": '',
-        "current_var": pvar[target_register_idx]
-    }
-    if target_register_idx > 3 and arch in ["arm", "mips"]:
+    print(f"Check Arg @ {hex(current_rip)}")
+    if arch == "mips":
+        current_rip += 4    # 对抗乱序执行
+        local_vars = {
+            "final_var": '',
+            "current_var": pvar[target_register_idx]
+        }
+        if target_register_idx > 3:
+            while current_rip != start_ea:
+                if idc.print_insn_mnem(current_rip) in inst["2"] and idc.op_hex(current_rip, 1) and idc.print_operand(current_rip, 1) == local_vars["current_var"]:
+                    local_vars["final_var"] = idc.print_operand(current_rip, 0)
+                    break
+                current_rip = idc.prev_head(current_rip)
+        else:
+            local_vars["final_var"] = local_vars["current_var"]
         while current_rip != start_ea:
-            if idc.print_insn_mnem(current_rip) in inst["2"] and idc.op_hex(current_rip, 1) and idc.print_operand(current_rip, 1) == local_vars["current_var"]:
-                local_vars["final_var"] = idc.print_operand(current_rip, 0)
-                break
+            if idc.print_insn_mnem(current_rip) in inst["1"] and idc.print_operand(current_rip, 0) == local_vars["final_var"]:
+                asm = idc.GetDisasm(current_rip)
+                if check_const is True:
+                    if ("\"" in asm) and (";" in asm or "#" in asm):
+                        return 1
+                    else:
+                        return 0
+                else:
+                    if ("\"" in asm) and (";" in asm or "#" in asm):
+                        return 0
+                    else:
+                        return 1
             current_rip = idc.prev_head(current_rip)
-    else:
-        local_vars["final_var"] = local_vars["current_var"]
-    while current_rip != start_ea:
-        if idc.print_insn_mnem(current_rip) in inst["1"] and idc.print_operand(current_rip, 0) == local_vars["final_var"]:
-            asm = idc.GetDisasm(current_rip)
-            if check_const is True:
-                if ("\"" in asm) and (";" in asm or "#" in asm):
-                    return 1
+        return 0
+    elif arch == "arm":
+        local_vars = {
+            "final_var": '',
+            "current_var": pvar[target_register_idx]
+        }
+        if target_register_idx > 3:
+            while current_rip != start_ea:
+                if idc.print_insn_mnem(current_rip) in inst["2"] and idc.op_hex(current_rip, 1) and idc.print_operand(
+                        current_rip, 1) == local_vars["current_var"]:
+                    local_vars["final_var"] = idc.print_operand(current_rip, 0)
+                    break
+                current_rip = idc.prev_head(current_rip)
+        else:
+            local_vars["final_var"] = local_vars["current_var"]
+        while current_rip != start_ea:
+            print(hex(current_rip), idc.print_insn_mnem(current_rip), "->", local_vars["final_var"])
+            if idc.print_insn_mnem(current_rip) in inst["1"] and idc.print_operand(current_rip, 0) == local_vars["final_var"]:
+                asm = idc.GetDisasm(current_rip)
+                if check_const is True:
+                    if ("\"" in asm) and (";" in asm or "#" in asm):
+                        return 1
+                    elif idc.print_operand(current_rip, 1) in pvar:
+                        local_vars["final_var"] = idc.print_operand(current_rip, 1)
+                        print(hex(current_rip), asm)
+                    else:
+                        return 0
                 else:
-                    return 0
-            else:
-                if ("\"" in asm) and (";" in asm or "#" in asm):
-                    return 0
-                else:
-                    return 1
-        current_rip = idc.prev_head(current_rip)
-    return 0
+                    if ("\"" in asm) and (";" in asm or "#" in asm):
+                        return 0
+                    else:
+                        return 1
+            current_rip = idc.prev_head(current_rip)
+        return 0
 
 
 def GetString(addr):
@@ -72,6 +109,8 @@ def GetString(addr):
 
 
 def check_with_va_args(current_rip, start_ea):
+    print(f"Check Va Args @ {hex(current_rip)}")
+    current_rip = current_rip + 4
     local_vars = {
         "isFmt": True,
         "cntFmt": 0,
@@ -80,18 +119,12 @@ def check_with_va_args(current_rip, start_ea):
     }
     if arch == "mips":
         while current_rip != start_ea:
-            print(current_rip, idc.print_insn_mnem(current_rip))
+            print(hex(current_rip), idc.print_insn_mnem(current_rip))
             if idc.print_insn_mnem(current_rip) in inst["1"] and idc.print_operand(current_rip, 0) == pvar[0]:
                 asm = idc.GetDisasm(current_rip)
                 if ("\"" in asm) and (";" in asm or "#" in asm):
-                    current_analysis = {
-                        "fmt_str_offset": 0
-                    }
-                    if idc.print_insn_mnem(current_rip) == "li":
-                        current_analysis["fmt_str_offset"] = idc.get_operand_value(current_rip, 1)
-                    else:
-                        current_analysis["fmt_str_offset"] = idc.get_operand_value(current_rip, 1) + idaapi.get_imagebase()
-                    fmt_str = GetString(current_analysis["fmt_str_offset"])
+                    fmt_str_offset = idc.get_operand_value(current_rip, 1) + idaapi.get_imagebase()
+                    fmt_str = GetString(fmt_str_offset)
                     if fmt_str.find("%") == -1:
                         local_vars["isFmt"] = False
                         return 1
@@ -141,7 +174,7 @@ def check_with_va_args(current_rip, start_ea):
 
 
 def check_vuln(ea,check_point):
-    code_xrefs = idautils.CodeRefsTo(ea, False)
+    code_xrefs = CodeRefsTo(ea, False)
     for code_xref in code_xrefs:
         xref_function_address = idc.get_func_attr(code_xref, idc.FUNCATTR_START)
         if xref_function_address & 0xffffffff != 0xffffffff:
@@ -149,8 +182,10 @@ def check_vuln(ea,check_point):
                 result = check(code_xref,xref_function_address,check_point['args']-1, check_point["const"])
                 print(f'{idaapi.get_root_filename()},{idc.get_func_name(ea)},{hex(code_xref-idaapi.get_imagebase())},{result}')
                 output.write(f'{idaapi.get_root_filename()},{idc.get_func_name(ea)},{hex(code_xref-idaapi.get_imagebase())},{result}\n')
-            elif "va_args" in check_point.keys() and "const" in check_point.keys():
-                check_with_va_args(code_xref,xref_function_address)
+            elif "va_args" in check_point.keys() and "const" in check_point.keys() and arch in ["mips"]:
+                result = check_with_va_args(code_xref,xref_function_address)
+                print(f'{idaapi.get_root_filename()},{idc.get_func_name(ea)},{hex(code_xref-idaapi.get_imagebase())},{result}')
+                output.write(f'{idaapi.get_root_filename()},{idc.get_func_name(ea)},{hex(code_xref - idaapi.get_imagebase())},{result}\n')
             else:
                 print(f'{idaapi.get_root_filename()},{idc.get_func_name(ea)},{hex(code_xref - idaapi.get_imagebase())},0')
                 output.write(f'{idaapi.get_root_filename()},{idc.get_func_name(ea)},{hex(code_xref - idaapi.get_imagebase())},0\n')
@@ -266,7 +301,7 @@ if __name__ == '__main__':
     ]
 
     functions = {}
-    for ea in idautils.Functions():
+    for ea in Functions():
         functions[idc.get_func_name(ea)] = ea
     for check_point in check_list:
         vuln_function = check_point['function']
