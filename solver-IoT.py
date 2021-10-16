@@ -6,7 +6,7 @@ import subprocess
 data_set = glob.glob('D:\\Project\\PythonProject\\datacon2021\\data_set\\*')
 ida_path = "C:\\Users\\bytedance\\SecTool\\IDA\\IDA Pro 7.5 SP3\\ida.exe"
 ida64_path = "C:\\Users\\bytedance\\SecTool\\IDA\\IDA Pro 7.5 SP3\\ida64.exe"
-script_path = "D:\\Project\\PythonProject\\datacon2021\\mz_solve.py"
+script_path = "D:\\Project\\PythonProject\\datacon2021\\VulnScanner.py"
 # script_path = "D:\\Project\\PythonProject\\datacon2021\\scanner-IoT.py"
 
 for file_path in data_set:
