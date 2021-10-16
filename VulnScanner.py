@@ -4,7 +4,7 @@ import idaapi
 from idautils import *
 
 idc.auto_wait()
-output = open("D:\\Project\\PythonProject\\datacon2021\\res_1015.txt", "a+")
+output = open("D:\\Project\\PythonProject\\datacon2021\\res_1016_22.txt", "a+")
 
 
 class VulnScanner(object):
@@ -243,6 +243,7 @@ class MipsVulnScanner(VulnScanner):
         return -1, None
 
     def checkCurrentInst(self, current_ip, check_inst_info):
+        # print("\t\tcheckCurrentInst", hex(current_ip), check_inst_info)
         local_vars = {
             "isTypeMatch": True,
             "toCheck": -1,
@@ -257,9 +258,12 @@ class MipsVulnScanner(VulnScanner):
                     local_vars["toCheck"] = idx
                 if "read" in check_inst_info["operand"][idx].keys():
                     local_vars["toRead"] = idx
+            print(local_vars)
+        else:
+            return False, None, None
         if local_vars["isTypeMatch"] is True:
             return True, idc.print_operand(current_ip, local_vars["toCheck"]), idc.get_operand_value(current_ip, local_vars["toRead"] if local_vars["toRead"] != -1 else None)
-        return False, None
+        return False, None, None
 
     def checkOneArg(self, current_ip, start_ea, target_register_idx, check_const) -> (int, str):
         current_ip += 4
@@ -285,42 +289,46 @@ class MipsVulnScanner(VulnScanner):
                 asm = idc.GetDisasm(current_ip)
                 current_inst = idc.print_insn_mnem(current_ip)
                 operand_1_type = idc.get_operand_type(current_ip, 1)
-                if ("\"" in asm) and (";" in asm or "#" in asm):
-                    if local_vars["curr_inst"] == "addiu":
+                if local_vars["curr_inst"] == "addiu":
 
-                        # LOAD: 0040CDBC          li      $a0, dword_470000
-                        # LOAD: 0040CDC0          la      $t9, system
-                        # LOAD: 0040CDC4          nop
-                        # LOAD: 0040CDC8          jr      $t9; system
-                        # LOAD: 0040CDCC          addiu   $a0, (aBinKillall9Ppp - 0x470000)  # "/bin/killall -9 ppp_..."
+                    # LOAD: 0040CDBC          li      $a0, dword_470000
+                    # LOAD: 0040CDC0          la      $t9, system
+                    # LOAD: 0040CDC4          nop
+                    # LOAD: 0040CDC8          jr      $t9; system
+                    # LOAD: 0040CDCC          addiu   $a0, (aBinKillall9Ppp - 0x470000)  # "/bin/killall -9 ppp_..."
 
-                        check_inst = self.checkCurrentInst(current_ip, self.instInfo["addiu_pass_str_tracer_1"])
-                        if check_inst[0] is True and check_inst[1] in self.ppvar and check_inst[2] is not None:
-                            upwards_inst = self.traceUpwardsInst(current_ip, start_ea, self.instInfo["addiu_pass_str_li_tracee"], check_inst[1])
-                            if upwards_inst[0] != -1 and upwards_inst[1] is not None:
-                                maybe_str_off = (check_inst[2]+upwards_inst[1])&0xffffffff
-                                local_vars["string"] = idc.get_strlit_contents(maybe_str_off, -1, idc.STRTYPE_C)
+                    check_inst = self.checkCurrentInst(current_ip, self.instInfo["addiu_pass_str_tracer_1"])
+                    print("\tCheck addiu_pass_str_tracer_1", hex(current_ip), check_inst)
+                    if check_inst[0] is True and check_inst[1] in self.ppvar+self.pvar and check_inst[2] is not None:
+                        upwards_inst = self.traceUpwardsInst(current_ip-4, start_ea, self.instInfo["addiu_pass_str_li_tracee"], check_inst[1])
+                        print("\tUpwards addiu_pass_str_li_tracee", upwards_inst)
+                        if upwards_inst[0] != -1 and upwards_inst[1] is not None:
+                            maybe_str_off = (check_inst[2]+upwards_inst[1])&0xffffffff
+                            local_vars["string"] = idc.get_strlit_contents(maybe_str_off, -1, idc.STRTYPE_C)
+                            return (1, local_vars["string"]) if check_const is True else (0, local_vars["string"])
+                    # LOAD: 00419FE8          li      $v0, dword_470000
+                    # LOAD: 00419FEC          nop
+                    # LOAD: 00419FF0          addiu   $s0, $v0, (dword_46B99C - 0x470000)
 
-                        # LOAD: 00419FE8          li      $v0, dword_470000
-                        # LOAD: 00419FEC          nop
-                        # LOAD: 00419FF0          addiu   $s0, $v0, (dword_46B99C - 0x470000)
+                    check_inst = self.checkCurrentInst(current_ip, self.instInfo["addiu_pass_str_tracer_2"])
+                    print("\tCheck addiu_pass_str_tracer_2", hex(current_ip), check_inst)
+                    if check_inst[0] is True and check_inst[1] in self.ppvar+self.pvar and check_inst[2] is not None:
+                        upwards_inst = self.traceUpwardsInst(current_ip-4, start_ea, self.instInfo["addiu_pass_str_li_tracee"], check_inst[1])
+                        print("\tUpwards addiu_pass_str_li_tracee", upwards_inst)
+                        if upwards_inst[0] != -1 and upwards_inst[1] is not None:
+                            maybe_str_off = (check_inst[2] + upwards_inst[1]) & 0xffffffff
+                            local_vars["string"] = idc.get_strlit_contents(maybe_str_off, -1, idc.STRTYPE_C)
+                            return (1, local_vars["string"]) if check_const is True else (0, local_vars["string"])
+                    # .text: 00400A98         lui     $v0, 0x40  # '@'
+                    # .text: 00400A9C         addiu   $a0, $v0, (aPlaintextS - 0x400000)  # "plaintext: \"%s\"\n"
 
-                        check_inst = self.checkCurrentInst(current_ip, self.instInfo["addiu_pass_str_tracer_2"])
-                        if check_inst[0] is True and check_inst[1] in self.ppvar and check_inst[2] is not None:
-                            upwards_inst = self.traceUpwardsInst(current_ip, start_ea, self.instInfo["addiu_pass_str_li_tracee"], check_inst[1])
-                            if upwards_inst[0] != -1 and upwards_inst[1] is not None:
-                                maybe_str_off = (check_inst[2] + upwards_inst[1]) & 0xffffffff
-                                local_vars["string"] = idc.get_strlit_contents(maybe_str_off, -1, idc.STRTYPE_C)
-
-                        # .text: 00400A98         lui     $v0, 0x40  # '@'
-                        # .text: 00400A9C         addiu   $a0, $v0, (aPlaintextS - 0x400000)  # "plaintext: \"%s\"\n"
-
-                        if check_inst[0] is True and check_inst[1] in self.ppvar and check_inst[2] is not None:
-                            upwards_inst = self.traceUpwardsInst(current_ip, start_ea, self.instInfo["addiu_pass_str_lui_tracee"], check_inst[1])
-                            if upwards_inst[0] != -1 and upwards_inst[1] is not None:
-                                maybe_str_off = (check_inst[2] + (upwards_inst[1] << 16)) & 0xffffffff
-                                local_vars["string"] = idc.get_strlit_contents(maybe_str_off, -1, idc.STRTYPE_C)
-                    return 1, local_vars["string"] if check_const is True else 0, local_vars["string"]
+                    if check_inst[0] is True and check_inst[1] in self.ppvar+self.pvar and check_inst[2] is not None:
+                        upwards_inst = self.traceUpwardsInst(current_ip-4, start_ea, self.instInfo["addiu_pass_str_lui_tracee"], check_inst[1])
+                        print("\tUpwards addiu_pass_str_lui_tracee", upwards_inst)
+                        if upwards_inst[0] != -1 and upwards_inst[1] is not None:
+                            maybe_str_off = (check_inst[2] + (upwards_inst[1] << 16)) & 0xffffffff
+                            local_vars["string"] = idc.get_strlit_contents(maybe_str_off, -1, idc.STRTYPE_C)
+                            return (1, local_vars["string"]) if check_const is True else (0, local_vars["string"])
                 elif idc.print_operand(current_ip, 1) in self.ppvar and idc.get_operand_value(current_ip, 2) == -0x1:
                     local_vars["last_var"] = idc.print_operand(current_ip, 1)
                     print("\tTracee-chg", hex(current_ip), asm)
@@ -329,14 +337,15 @@ class MipsVulnScanner(VulnScanner):
                     s = idc.get_strlit_contents(maybe_str_off, -1, idc.STRTYPE_C)
                     if s is not None:
                         print("\tget_str", s)
-                        return 1 if check_const is True else 0
+                        return (1, s) if check_const is True else (0, s)
                 else:
-                    return 0 if check_const is True else 1
+                    return (0, '') if check_const is True else (1, '')
             current_ip = idc.prev_head(current_ip)
-        return 0
+        return (0, '')
 
     def checkVaArgs(self, current_ip, start_ea):
         return 1
+
 
 
 if __name__ == "__main__":
