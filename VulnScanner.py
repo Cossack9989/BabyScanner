@@ -4,7 +4,7 @@ import idaapi
 from idautils import *
 
 idc.auto_wait()
-output = open("D:\\Project\\PythonProject\\datacon2021\\res_1016_81_test.txt", "a+")
+output = open("D:\\Project\\PythonProject\\datacon2021\\res_1018_final.txt", "a+")
 
 
 class VulnScanner(object):
@@ -147,33 +147,19 @@ class VulnScanner(object):
             if xref_function_address & 0xffffffff != 0xffffffff:
                 if "va_args" not in check_point.keys() and "const" in check_point.keys():
                     result = self.checkOneArg(code_xref, xref_function_address, check_point['args'] - 1, check_point["const"])
-                    print(
-                        f'{idaapi.get_root_filename()},{idc.get_func_name(ea)},{hex(code_xref - idaapi.get_imagebase())},{result[0]}'
-                    )
+                    print(f'{idaapi.get_root_filename()},{idc.get_func_name(ea)},{hex(code_xref - idaapi.get_imagebase())},{result[0]}')
                     if self.arch == "amd64" and idc.get_func_name(ea).startswith("."):
                         func_name = "_" + idc.get_func_name(ea)[1:]
-                        output.write(
-                            f'{idaapi.get_root_filename()},{func_name},{hex(code_xref - idaapi.get_imagebase())},{result[0]}\n'
-                        )
+                        output.write(f'{idaapi.get_root_filename()},{func_name},{hex(code_xref - idaapi.get_imagebase())},{result[0]}\n')
                     else:
-                        output.write(
-                            f'{idaapi.get_root_filename()},{idc.get_func_name(ea)},{hex(code_xref - idaapi.get_imagebase())},{result[0]}\n'
-                        )
+                        output.write(f'{idaapi.get_root_filename()},{idc.get_func_name(ea)},{hex(code_xref - idaapi.get_imagebase())},{result[0]}\n')
                 elif "va_args" in check_point.keys() and "const" in check_point.keys():
                     result = self.checkVaArgs(code_xref, xref_function_address)
-                    print(
-                        f'{idaapi.get_root_filename()},{idc.get_func_name(ea)},{hex(code_xref - idaapi.get_imagebase())},{result}'
-                    )
-                    output.write(
-                        f'{idaapi.get_root_filename()},{idc.get_func_name(ea)},{hex(code_xref - idaapi.get_imagebase())},{result}\n'
-                    )
+                    print(f'{idaapi.get_root_filename()},{idc.get_func_name(ea)},{hex(code_xref - idaapi.get_imagebase())},{result}')
+                    output.write(f'{idaapi.get_root_filename()},{idc.get_func_name(ea)},{hex(code_xref - idaapi.get_imagebase())},{result}\n')
                 else:
-                    print(
-                        f'{idaapi.get_root_filename()},{idc.get_func_name(ea)},{hex(code_xref - idaapi.get_imagebase())},0'
-                    )
-                    output.write(
-                        f'{idaapi.get_root_filename()},{idc.get_func_name(ea)},{hex(code_xref - idaapi.get_imagebase())},0\n'
-                    )
+                    print(f'{idaapi.get_root_filename()},{idc.get_func_name(ea)},{hex(code_xref - idaapi.get_imagebase())},0')
+                    output.write(f'{idaapi.get_root_filename()},{idc.get_func_name(ea)},{hex(code_xref - idaapi.get_imagebase())},0\n')
             else:
                 pass
 
@@ -187,7 +173,6 @@ class VulnScanner(object):
         return -1, None
 
     def checkCurrentInst(self, current_ip, check_inst_info):
-        # print("\t\tcheckCurrentInst", hex(current_ip), check_inst_info)
         local_vars = {
             "isTypeMatch": True,
             "toCheck": -1,
@@ -203,11 +188,10 @@ class VulnScanner(object):
                     local_vars["toCheck"] = idx
                 if "read" in check_inst_info["operand"][idx].keys():
                     local_vars["toRead"] = idx
-            # print(local_vars)
         else:
             return False, None, None
         if local_vars["isTypeMatch"] is True:
-            if local_vars["toRead"] != -1 and local_vars["toCheck"] != -1:
+            if local_vars["toCheck"] != -1:
                 if check_inst_info["operand"][local_vars["toCheck"]]["type"] == idc.o_displ:
                     for reg in self.ppvar:
                         if reg in idc.print_operand(current_ip, local_vars["toCheck"]):
@@ -218,6 +202,16 @@ class VulnScanner(object):
                 print(local_vars["checkRes"], hex(idc.get_operand_value(current_ip, local_vars["toRead"] if local_vars["toRead"] != -1 else None)))
                 return True, local_vars["checkRes"], idc.get_operand_value(current_ip, local_vars["toRead"] if local_vars["toRead"] != -1 else None)
         return False, None, None
+
+    def isStrFmtIdx(self, fmt_str: bytes, idx):
+        fmt_str = fmt_str.decode("latin-1")
+        l = fmt_str.split("%")
+        try:
+            if l[idx+1].startswith('s') or l[idx+1].startswith('[') or l[idx+1].startswith('*s') or l[idx+1].startswith('*['):
+                return True
+        except Exception as e:
+            print(str(Exception), str(e))
+        return False
 
     def checkOneArg(self, current_ip, start_ea, target_register_idx, check_const):
         return 1, b''
@@ -233,19 +227,52 @@ class ArmVulnScanner(VulnScanner):
         self.pvar = ["R0", "R1", "R2", "R3", "[SP]"]
         self.ppvar = ["R4", "R5", "R6", "R7"]
         self.inst = {
-            "1": ["MOV", "LDR"],
+            "1": ["MOV", "LDR", "ADD", "MOVT", "MOVW"],
             "2": ["STR"]
         }
         self.instInfo = {
-            "move_pass_str_tracer": {
-                "inst": "MOV",
+            "add_pass_str_tracer": {
+                "inst": "ADD",
                 "operand": {
                     0: {"type": idc.o_reg, "check": True},
-                    1: {"type": idc.o_imm, "read": True},
-                    2: {"type": idc.o_void}
+                    1: {"type": idc.o_reg, "read": True},
+                    2: {"type": idc.o_reg}
                 },
             },
+            "add_pass_str_ldr_tracee": {
+                "inst": "LDR",
+                "operand": {
+                    0: {"type": idc.o_reg, "check": True},
+                    1: {"type": idc.o_mem, "read": True},
+                    2: {"type": idc.o_void}
+                }
+            },
+            "movw_pass_str_tracer_and_tracee": {
+                "inst": "MOVW",
+                "operand": {
+                    0: {"type": idc.o_reg, "check": True, "read": True},
+                    1: {"type": idc.o_imm},
+                    2: {"type": idc.o_void}
+                }
+            },
+            "movt_pass_str_tracer_and_tracee": {
+                "inst": "MOVT",
+                "operand": {
+                    0: {"type": idc.o_reg, "check": True, "read": True},
+                    1: {"type": idc.o_imm},
+                    2: {"type": idc.o_void}
+                }
+            }
         }
+
+    def getGlobalOffsetTable(self):
+        if "_GLOBAL_OFFSET_TABLE_" in [name[1] for name in Names()]:
+            try:
+                idx = [name[1] for name in Names()].index("_GLOBAL_OFFSET_TABLE_")
+                return [name[0] for name in Names()][idx]
+            except Exception as e:
+                print(str(Exception))
+        return None
 
     def checkOneArg(self, current_ip, start_ea, target_register_idx, check_const):
         local_vars = {
@@ -270,6 +297,7 @@ class ArmVulnScanner(VulnScanner):
                 asm = idc.GetDisasm(current_ip)
                 current_inst = idc.print_insn_mnem(current_ip)
                 operand_1_type = idc.get_operand_type(current_ip, 1)
+                operand_2_type = idc.get_operand_type(current_ip, 2)
                 if idc.print_operand(current_ip, 1) in self.ppvar+self.pvar and idc.get_operand_value(current_ip, 2) == -0x1:
                     local_vars["last_var"] = idc.print_operand(current_ip, 1)
                     print("\tTracee-chg", hex(current_ip), asm)
@@ -277,11 +305,50 @@ class ArmVulnScanner(VulnScanner):
                     maybe_str_off = idaapi.get_dword(idc.get_operand_value(current_ip, 1))
                     local_vars["string"] = idc.get_strlit_contents(maybe_str_off, -1, idc.STRTYPE_C)
                     return (1, local_vars["string"]) if check_const is True else (0, local_vars["string"])
+                elif local_vars["curr_inst"] == "MOV" and operand_1_type == idc.o_imm:
+                    maybe_str_off = idc.get_operand_value(current_ip, 1)
+                    local_vars["string"] = idc.get_strlit_contents(maybe_str_off, -1, idc.STRTYPE_C)
+                    return (1, local_vars["string"]) if check_const is True else (0, local_vars["string"])
+                elif local_vars["curr_inst"] == "ADD":
+                    check_inst = self.checkCurrentInst(current_ip, self.instInfo["add_pass_str_tracer"])
+                    print("\tCheck add_pass_str_tracer", hex(current_ip), check_inst)
+                    if check_inst[0] is True and check_inst[1] in self.ppvar + self.pvar:
+                        upwards_inst = self.traceUpwardsInst(current_ip-4, start_ea, self.instInfo["add_pass_str_ldr_tracee"], check_inst[1])
+                        print("\tUpwards add_pass_str_ldr_tracee", upwards_inst)
+                        if upwards_inst[0] != -1 and upwards_inst[1] is not None:
+                            maybe_str_off = (idaapi.get_dword(upwards_inst[1]) + self.getGlobalOffsetTable()) & 0xffffffff
+                            print("Maybe Str", upwards_inst[1], hex(maybe_str_off))
+                            local_vars["string"] = idc.get_strlit_contents(maybe_str_off, -1, idc.STRTYPE_C)
+                            return (1, local_vars["string"]) if check_const is True else (0, local_vars["string"])
+                    elif check_inst[1] in ["SP"]:
+                        return (0, b'') if check_const is True else (1, b'')
+                elif local_vars["curr_inst"] == "MOVT":
+                    check_inst = self.checkCurrentInst(current_ip, self.instInfo["movt_pass_str_tracer_and_tracee"])
+                    print("\tCheck movt_pass_str_tracer_and_tracee", hex(current_ip), check_inst)
+                    if check_inst[0] is True and check_inst[1] in self.ppvar + self.pvar and check_inst[2] is not None:
+                        upwards_inst = self.traceUpwardsInst(current_ip-4, start_ea, self.instInfo["movw_pass_str_tracer_and_tracee"], check_inst[1])
+                        print("\tUpwards movw_pass_str_tracer_and_tracee", upwards_inst)
+                        if upwards_inst[0] != -1 and upwards_inst[1] is not None:
+                            maybe_str_off = ((upwards_inst[1] + (check_inst[2]<<16))&0xffffffff)
+                            local_vars["string"] = idc.get_strlit_contents(maybe_str_off, -1, idc.STRTYPE_C)
+                            return (1, local_vars["string"]) if check_const is True else (0, local_vars["string"])
+                elif local_vars["curr_inst"] == "MOVW":
+                    check_inst = self.checkCurrentInst(current_ip, self.instInfo["movw_pass_str_tracer_and_tracee"])
+                    print("\tCheck movw_pass_str_tracer_and_tracee", hex(current_ip), check_inst)
+                    if check_inst[0] is True and check_inst[1] in self.ppvar + self.pvar and check_inst[2] is not None:
+                        upwards_inst = self.traceUpwardsInst(current_ip-4, start_ea, self.instInfo["movt_pass_str_tracer_and_tracee"], check_inst[1])
+                        print("\tUpwards movt_pass_str_tracer_and_tracee", upwards_inst)
+                        if upwards_inst[0] != -1 and upwards_inst[1] is not None:
+                            maybe_str_off = ((check_inst[2] + (upwards_inst[1]<<16))&0xffffffff)
+                            local_vars["string"] = idc.get_strlit_contents(maybe_str_off, -1, idc.STRTYPE_C)
+                            return (1, local_vars["string"]) if check_const is True else (0, local_vars["string"])
                 else:
                     return (0, b'') if check_const is True else (1, b'')
-            print(hex(current_ip))
             current_ip = idc.prev_head(current_ip)
         return 0, b''
+
+    def checkOneIntArg(self):
+        return 1
 
     def checkVaArgs(self, current_ip, start_ea):
         local_vars = {
@@ -310,9 +377,10 @@ class ArmVulnScanner(VulnScanner):
             return 0
         for var_idx in range(local_vars["cntFmt"]):
             print(f"====================={str(var_idx + 1)}========================")
-            curr_var = self.checkOneArg(current_ip, start_ea, var_idx + 1, True)
-            if curr_var[0] == 0:
-                return 0
+            if self.isStrFmtIdx(firstArg[1], var_idx) is True:
+                curr_var = self.checkOneArg(current_ip, start_ea, var_idx + 1, True)
+                if curr_var[0] == 0:
+                    return 0
         return 1
 
 
@@ -358,7 +426,6 @@ class X64VulnScanner(VulnScanner):
                     return (1, local_vars["string"]) if check_const is True else (0, local_vars["string"])
                 else:
                     return (0, b'') if check_const is True else (1, b'')
-            print(hex(current_ip))
             current_ip = idc.prev_head(current_ip)
         return 0, b''
 
@@ -389,9 +456,10 @@ class X64VulnScanner(VulnScanner):
             return 0
         for var_idx in range(local_vars["cntFmt"]):
             print(f"====================={str(var_idx + 1)}========================")
-            curr_var = self.checkOneArg(current_ip, start_ea, var_idx + 1, True)
-            if curr_var[0] == 0:
-                return 0
+            if self.isStrFmtIdx(firstArg[1], var_idx) is True:
+                curr_var = self.checkOneArg(current_ip, start_ea, var_idx + 1, True)
+                if curr_var[0] == 0:
+                    return 0
         return 1
 
 
@@ -400,20 +468,12 @@ class MipsVulnScanner(VulnScanner):
     def __init__(self):
         super().__init__()
         self.pvar = ["$a0", "$a1", "$a2", "$a3", "0x10($sp)"]
-        self.ppvar = ["$v0", "$v1", "$s0", "$s1", "$s2", "$s3", "$s4", "$s5", "$s6", "$s7"]
+        self.ppvar = ["$v0", "$v1", "$s0", "$s1", "$s2", "$s3", "$s4", "$s5", "$s6", "$s7", "$fp"]
         self.inst = {
-            "1": ["move", "addiu", "lw", "li", "la"],         # trace once while using $a?
-            "2": ["sw"],                                # trace twice while using [SP,?]
+            "1": ["move", "addiu", "lw", "li", "la"],
+            "2": ["sw"],
         }
         self.instInfo = {
-            "move_pass_str_tracer": {
-                "inst": "addiu",
-                "operand": {
-                    0: {"type": idc.o_reg, "check": True},
-                    1: {"type": idc.o_imm, "read": True},
-                    2: {"type": idc.o_void}
-                },
-            },
             "addiu_pass_str_tracer_1": {
                 "inst": "addiu",
                 "operand": {
@@ -446,13 +506,6 @@ class MipsVulnScanner(VulnScanner):
                     2: {"type": idc.o_void}
                 }
             },
-            # "addiu_pass_str_lb_tracee": {
-            #     "inst": "lb",
-            #     "operand": {
-            #         0: {"type": idc.o_reg},
-            #         1: {"type": idc.o_displ, "check": True, "read"},
-            #     }
-            # },
             "lw_pass_str_tracer": {
                 "inst": "lw",
                 "operand": {
@@ -496,13 +549,11 @@ class MipsVulnScanner(VulnScanner):
                 current_inst = idc.print_insn_mnem(current_ip)
                 operand_1_type = idc.get_operand_type(current_ip, 1)
                 if local_vars["curr_inst"] == "addiu":
-
                     # LOAD: 0040CDBC          li      $a0, dword_470000
                     # LOAD: 0040CDC0          la      $t9, system
                     # LOAD: 0040CDC4          nop
                     # LOAD: 0040CDC8          jr      $t9; system
-                    # LOAD: 0040CDCC          addiu   $a0, (aBinKillall9Ppp - 0x470000)  # "/bin/killall -9 ppp_..."
-
+                    # LOAD: 0040CDCC          addiu   $a0, (aBinKillall9Ppp - 0x470000)
                     check_inst = self.checkCurrentInst(current_ip, self.instInfo["addiu_pass_str_tracer_1"])
                     print("\tCheck addiu_pass_str_tracer_1", hex(current_ip), check_inst)
                     if check_inst[0] is True and check_inst[1] in self.ppvar+self.pvar and check_inst[2] is not None:
@@ -514,11 +565,9 @@ class MipsVulnScanner(VulnScanner):
                             return (1, local_vars["string"]) if check_const is True else (0, local_vars["string"])
                     elif check_inst[1] in ["$sp"]:
                         return (0, b'') if check_const is True else (1, b'')
-
                     # LOAD: 00419FE8          li      $v0, dword_470000
                     # LOAD: 00419FEC          nop
                     # LOAD: 00419FF0          addiu   $s0, $v0, (dword_46B99C - 0x470000)
-
                     check_inst = self.checkCurrentInst(current_ip, self.instInfo["addiu_pass_str_tracer_2"])
                     print("\tCheck addiu_pass_str_tracer_2", hex(current_ip), check_inst)
                     if check_inst[0] is True and check_inst[1] in self.ppvar+self.pvar and check_inst[2] is not None:
@@ -530,10 +579,8 @@ class MipsVulnScanner(VulnScanner):
                             return (1, local_vars["string"]) if check_const is True else (0, local_vars["string"])
                     elif check_inst[1] not in self.ppvar+self.pvar:
                         return (0, b'') if check_const is True else (1, b'')
-
                     # .text: 00400A98         lui     $v0, 0x40  # '@'
-                    # .text: 00400A9C         addiu   $a0, $v0, (aPlaintextS - 0x400000)  # "plaintext: \"%s\"\n"
-
+                    # .text: 00400A9C         addiu   $a0, $v0, (aPlaintextS - 0x400000)
                     if check_inst[0] is True and check_inst[1] in self.ppvar+self.pvar and check_inst[2] is not None:
                         upwards_inst = self.traceUpwardsInst(current_ip-4, start_ea, self.instInfo["addiu_pass_str_lui_tracee"], check_inst[1])
                         print("\tUpwards addiu_pass_str_lui_tracee", upwards_inst)
@@ -564,12 +611,10 @@ class MipsVulnScanner(VulnScanner):
                     if s is not None:
                         print("\tget_str", s)
                         return (1, s) if check_const is True else (0, s)
-
-                # .text: 0041DD90         la      $a1, SOAP_WAN_PPPCONNECTION  # "<u:%sResponse xmlns:u=\"urn:schemas-upn"...
+                # .text: 0041DD90         la      $a1, SOAP_WAN_PPPCONNECTION
                 # .text: 0041DD94         la      $a2, CPRequest
                 # .text: 0041DD98         la      $a0, SOAP_body  # s
                 # .text: 0041DD9C         jalr    $t9; sprintf
-
                 elif local_vars["curr_inst"] == "la" and operand_1_type == idc.o_mem:
                     maybe_str_off = idc.get_operand_value(current_ip, 1)
                     s = idc.get_strlit_contents(maybe_str_off, -1, idc.STRTYPE_C)
@@ -578,7 +623,6 @@ class MipsVulnScanner(VulnScanner):
                         return (1, s) if check_const is True else (0, s)
                 else:
                     return (0, b'') if check_const is True else (1, b'')
-            print(hex(current_ip))
             current_ip = idc.prev_head(current_ip)
         return 0, b''
 
@@ -608,10 +652,11 @@ class MipsVulnScanner(VulnScanner):
         else:
             return 0
         for var_idx in range(local_vars["cntFmt"]):
-            print(f"====================={str(var_idx+1)}========================")
-            curr_var = self.checkOneArg(current_ip, start_ea, var_idx+1, True)
-            if curr_var[0] == 0:
-                return 0
+            print(f"====================={str(var_idx + 1)}========================")
+            if self.isStrFmtIdx(firstArg[1], var_idx) is True:
+                curr_var = self.checkOneArg(current_ip, start_ea, var_idx + 1, True)
+                if curr_var[0] == 0:
+                    return 0
         return 1
 
 
@@ -624,7 +669,6 @@ if __name__ == "__main__":
         vulnFunction = check_point["function"]
         if scanner.arch == "amd64" and vulnFunction.startswith("_"):
             vulnFunction = "." + vulnFunction[1:]
-        print(vulnFunction)
         if vulnFunction in functions.keys():
             if scanner.arch == "mips":
                 mipsVulnScanner = MipsVulnScanner()
