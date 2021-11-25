@@ -9,6 +9,15 @@ IDA Pro 7.3/7.5/7.6 + idapython(py3)
 - Call-chain scanner
 - Context-based args tracer, which limited in one code block
 
+## TODO
+
+- The scanner traces args in preds blocks in 2 stage now
+  - Scan in 2 stage firstly
+  - Then scan in 3 stage
+  - if no const found, scan the whole cfg
+- When a const arg has been found, it may belong to another function call
+  - When a const arg has been caught, check AST
+
 ## Contributor
 
 MozhuCY, C0ss4ck
